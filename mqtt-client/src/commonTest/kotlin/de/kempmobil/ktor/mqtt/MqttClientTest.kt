@@ -610,20 +610,18 @@ class MqttClientTest {
     }
 
     @Test
-    fun `acknowledgment user property suppression is opt in`() {
-        assertFalse(buildConfig(DefaultEngineFactory("", 0)) { }.suppressAcknowledgmentUserProperties)
-        assertTrue(buildConfig(DefaultEngineFactory("", 0)) {
-            suppressAcknowledgmentUserProperties = true
-        }.suppressAcknowledgmentUserProperties)
+    fun `response packet modifier returns packet unchanged by default`() {
+        val puback = Puback(42u, Success, userProperties = buildUserProperties { "key" to "value" })
+        assertSame(puback, buildConfig(DefaultEngineFactory("", 0)) { }.responsePacketModifier(puback))
     }
 
     @Test
-    fun `incoming publish acknowledgments preserve user properties by default`() = runTest {
+    fun `incoming publish acknowledgments are unchanged by default`() = runTest {
         checkIncomingAcknowledgmentProperties(false)
     }
 
     @Test
-    fun `incoming publish acknowledgments can suppress user properties`() = runTest {
+    fun `incoming publish acknowledgments can be modified`() = runTest {
         checkIncomingAcknowledgmentProperties(true)
     }
 
@@ -642,7 +640,7 @@ class MqttClientTest {
         every { engine.close() } returns Unit
         val client = createClient(
             engine,
-            suppressAcknowledgmentUserProperties = suppress,
+            responsePacketModifier = if (suppress) removeUserProperties else { it -> it },
             dispatcher = StandardTestDispatcher(testScheduler)
         )
         val received = async { client.publishedPackets.first() }
@@ -677,12 +675,12 @@ class MqttClientTest {
     }
 
     @Test
-    fun `outgoing QoS 2 acknowledgments preserve user properties by default`() = runTest {
+    fun `outgoing QoS 2 acknowledgments are unchanged by default`() = runTest {
         checkOutgoingAcknowledgmentProperties(false)
     }
 
     @Test
-    fun `outgoing QoS 2 acknowledgments can suppress user properties`() = runTest {
+    fun `outgoing QoS 2 acknowledgments can be modified`() = runTest {
         checkOutgoingAcknowledgmentProperties(true)
     }
 
@@ -711,7 +709,7 @@ class MqttClientTest {
         every { engine.close() } returns Unit
         val client = createClient(
             engine,
-            suppressAcknowledgmentUserProperties = suppress,
+            responsePacketModifier = if (suppress) removeUserProperties else { it -> it },
             dispatcher = StandardTestDispatcher(testScheduler)
         )
         connectionState.emit(true)
@@ -739,6 +737,10 @@ class MqttClientTest {
         client.close()
     }
 
+    private val removeUserProperties: (PublishResponsePacket) -> PublishResponsePacket = {
+        it.copy(userProperties = UserProperties.EMPTY)
+    }
+
     // ---- Helper functions -------------------------------------------------------------------------------------------
 
     private fun qos2Publish(payload: String): Publish {
@@ -754,14 +756,14 @@ class MqttClientTest {
         connection: MqttEngine,
         id: String? = null,
         ackTimeout: Duration = 100.milliseconds,
-        suppressAcknowledgmentUserProperties: Boolean = false,
+        responsePacketModifier: (PublishResponsePacket) -> PublishResponsePacket = { it },
         dispatcher: CoroutineDispatcher = Dispatchers.Default
     ): MqttClient {
         val config = buildConfig(DefaultEngineFactory("", 0)) {
             connection { }
             ackMessageTimeout = ackTimeout
             clientId = id ?: ""
-            this.suppressAcknowledgmentUserProperties = suppressAcknowledgmentUserProperties
+            this.responsePacketModifier = responsePacketModifier
             this.dispatcher = dispatcher
         }
         return MqttClient(config, connection, session)

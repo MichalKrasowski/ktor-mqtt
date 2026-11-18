@@ -1,6 +1,7 @@
 package de.kempmobil.ktor.mqtt
 
 import co.touchlab.kermit.MutableLoggerConfig
+import de.kempmobil.ktor.mqtt.packet.PublishResponsePacket
 import de.kempmobil.ktor.mqtt.util.Logger
 import de.kempmobil.ktor.mqtt.util.MqttDslMarker
 import kotlinx.coroutines.CoroutineDispatcher
@@ -35,12 +36,12 @@ public interface MqttClientConfig {
     public val authenticationData: AuthenticationData?
     public val userProperties: UserProperties
     /**
-     * Omits user properties from outgoing PUBACK, PUBREC, PUBREL and PUBCOMP packets for brokers that do not support
-     * them. MQTT 5 permits these properties. Defaults to false to preserve the existing acknowledgment behavior.
-     * Does not affect PUBLISH properties or received packets.
+     * Applied to every outgoing PUBACK, PUBREC, PUBREL and PUBCOMP packet (including retransmissions) right before it
+     * is sent. The returned packet must be of the same type and have the same packet identifier. Defaults to returning
+     * the packet unchanged. Does not affect PUBLISH packets or received packets.
      */
-    public val suppressAcknowledgmentUserProperties: Boolean
-        get() = false
+    public val responsePacketModifier: (PublishResponsePacket) -> PublishResponsePacket
+        get() = { it }
     public val sessionStoreProvider: () -> SessionStore
 }
 
@@ -77,8 +78,9 @@ public fun <T : MqttEngineConfig> buildConfig(
  * @property authenticationMethod currently not used
  * @property authenticationData currently not used
  * @property sessionStoreProvider factory method for creating an instance of [SessionStore], defaults to create an [InMemorySessionStore]
- * @property suppressAcknowledgmentUserProperties omit user properties from outgoing publish acknowledgments for broker
- *           interoperability, defaults to `false`. PUBLISH properties and received packets are unaffected.
+ * @property responsePacketModifier modifies outgoing PUBACK, PUBREC, PUBREL and PUBCOMP packets before they are sent,
+ *           for example to remove user properties for brokers that reject them. Must keep the packet type and packet
+ *           identifier. Defaults to returning the packet unchanged.
  */
 @MqttDslMarker
 @OptIn(ExperimentalTime::class)
@@ -106,7 +108,7 @@ public class MqttClientConfigBuilder<out T : MqttEngineConfig>(
     public var authenticationMethod: String? = null
     public var authenticationData: ByteString? = null
     public var sessionStoreProvider: () -> SessionStore = { InMemorySessionStore() }
-    public var suppressAcknowledgmentUserProperties: Boolean = false
+    public var responsePacketModifier: (PublishResponsePacket) -> PublishResponsePacket = { it }
 
     public fun connection(init: T.() -> Unit) {
         engine = engineFactory.create(init)
@@ -160,7 +162,7 @@ public class MqttClientConfigBuilder<out T : MqttEngineConfig>(
             authenticationData = authenticationData?.let { AuthenticationData(it) },
             userProperties = userPropertiesBuilder?.build() ?: UserProperties.EMPTY,
             sessionStoreProvider = sessionStoreProvider,
-            suppressAcknowledgmentUserProperties = suppressAcknowledgmentUserProperties
+            responsePacketModifier = responsePacketModifier
         )
     }
 }
@@ -186,5 +188,5 @@ private class MqttClientConfigImpl(
     override val authenticationData: AuthenticationData? = null,
     override val userProperties: UserProperties,
     override val sessionStoreProvider: () -> SessionStore,
-    override val suppressAcknowledgmentUserProperties: Boolean,
+    override val responsePacketModifier: (PublishResponsePacket) -> PublishResponsePacket,
 ) : MqttClientConfig

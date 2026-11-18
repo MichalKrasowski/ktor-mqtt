@@ -275,8 +275,3 @@ internal fun <T : PublishResponsePacket> Source.readPublishResponse(createRespon
         createResponse(packetIdentifier, Success)
     }
 }
-
-public fun main() {
-    val p = Puback(1.toUShort(), Success)
-    val p2 = p.copy()
-}

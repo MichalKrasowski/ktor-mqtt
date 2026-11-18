@@ -552,12 +552,7 @@ public class MqttClient internal constructor(
     }
 
     private suspend fun sendAcknowledgment(packet: PublishResponsePacket): Result<Unit> {
-        val outgoing = if (config.suppressAcknowledgmentUserProperties) {
-            packet.copy(userProperties = UserProperties.EMPTY)
-        } else {
-            packet
-        }
-        return engine.send(outgoing)
+        return engine.send(config.responsePacketModifier(packet))
     }
 
     private suspend fun handlePacket(packet: Packet) {

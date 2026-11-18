@@ -130,9 +130,14 @@ val client = MqttClient("test.mosquitto.org", 1883) {
 
 For brokers that reject user properties on acknowledgments, such as
 [Azure Event Grid](https://learn.microsoft.com/en-us/azure/event-grid/mqtt-support#mqtt-v5-current-limitations),
-set `suppressAcknowledgmentUserProperties = true` in the client configuration (default: `false`).
-This omits them from outgoing PUBACK/PUBREC/PUBREL/PUBCOMP packets, including retransmissions, without changing
-PUBLISH properties. See `MqttClientConfig` for details.
+use `responsePacketModifier` to adjust outgoing PUBACK/PUBREC/PUBREL/PUBCOMP packets, including retransmissions,
+before they are sent. PUBLISH packets are not affected:
+
+```kotlin
+val client = MqttClient("test.mosquitto.org", 1883) {
+    responsePacketModifier = { it.copy(userProperties = UserProperties.EMPTY) }
+}
+```
 
 ## Using in your project
 
